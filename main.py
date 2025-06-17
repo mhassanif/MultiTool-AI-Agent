@@ -7,7 +7,6 @@ from datetime import datetime
 import chromadb
 from chromadb.config import Settings
 from langchain.agents import AgentExecutor, create_react_agent
-from langchain.schema import BaseMessage
 from langchain_ollama import OllamaLLM
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_experimental.utilities import PythonREPL
@@ -22,17 +21,13 @@ nest_asyncio.apply()
 def run_async_task(agent, task, container):
     """Wrapper function to run async tasks in Streamlit"""
     try:
-        # Try to get the current event loop
         loop = asyncio.get_event_loop()
     except RuntimeError:
-        # If no event loop exists, create a new one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
-    # Run the async task
     return loop.run_until_complete(agent.run_task(task, container))
 
-# Custom callback handler to stream intermediate steps
+# Custom callback handler to stream intermediate steps to sidebar
 class StreamlitCallbackHandler(AsyncCallbackHandler):
     def __init__(self, container):
         self.container = container
@@ -224,7 +219,7 @@ Thought: {agent_scratchpad}"""
         # Combine both contexts
         full_context = f"{recent_context}\n\n{memory_context}"
         
-        # Debug: Show what memory context is being used
+        # Debug: Show memory context in sidebar
         with container:
             with st.expander("🧠 Memory Context Being Used", expanded=False):
                 st.text(full_context)
@@ -247,7 +242,6 @@ Thought: {agent_scratchpad}"""
                 agent_response=output,
                 tools_used=tools_used
             )
-            st.success(f"✅ Interaction saved to memory (Total interactions: {len(self.memory_manager.collection.get()['ids'])})")
         except Exception as e:
             st.warning(f"Memory storage warning: {e}")
         
@@ -260,9 +254,13 @@ Thought: {agent_scratchpad}"""
         }
 
 def main():
-    st.title("🤖 Enhanced Task-Oriented AI Agent")
-    st.markdown("💭 Powered by ChromaDB memory and LangChain")
-    st.markdown("Enter tasks below to see the agent reason step-by-step. Ask multiple questions!")
+    st.title("🤖 Task-Oriented AI Chatbot")
+    st.markdown("Powered by ChromaDB and LangChain 🎈")
+
+    # Initialize sidebar for reasoning
+    with st.sidebar:
+        st.header("🧠 Reasoning Process")
+        reasoning_container = st.container()
 
     # Initialize session state
     if 'agent' not in st.session_state:
@@ -274,158 +272,86 @@ def main():
             return
     
     # Initialize chat history in session state
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-    
-    # Clear chat button and memory status
-    col1, col2, col3 = st.columns([1, 2, 2])
-    with col1:
-        if st.button("🗑️ Clear Chat"):
-            st.session_state.chat_history = []
-            st.rerun()
-    
-    with col2:
-        if st.session_state.agent:
-            try:
-                memory_count = len(st.session_state.agent.memory_manager.collection.get()['ids'])
-                st.info(f"🧠 Memory: {memory_count} interactions stored")
-            except:
-                st.info("🧠 Memory: Ready to store interactions")
-    
-    with col3:
-        if st.button("🔄 Clear Memory"):
-            if st.session_state.agent:
-                try:
-                    st.session_state.agent.memory_manager.collection.delete(
-                        ids=st.session_state.agent.memory_manager.collection.get()['ids']
-                    )
-                    st.success("Memory cleared!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error clearing memory: {e}")
-    
-    # Input form at the top
-    with st.form(key="task_form", clear_on_submit=True):
-        task = st.text_input("🎯 Enter your task:", placeholder="e.g., Calculate the square root of 25")
-        submit_button = st.form_submit_button("Ask Question")
-    
-    # Process new question
-    if submit_button and task:
-        # Add question to history immediately
-        question_entry = {
-            'type': 'question',
-            'content': task,
-            'timestamp': datetime.now()
-        }
-        st.session_state.chat_history.append(question_entry)
-        
-        # Show processing message
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+
+    # Display chat messages from history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant" and "metadata" in message:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.caption(f"⏱️ Duration: {message['metadata']['duration']:.2f}s")
+                with col2:
+                    tools = message['metadata'].get('tools_used', [])
+                    st.caption(f"🛠️ Tools: {', '.join(tools) if tools else 'None'}")
+
+    # Chat input
+    prompt = st.chat_input("Enter your task (e.g., Calculate the square root of 25)")
+
+    # Process new input
+    if prompt:
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        # Process the task
         with st.spinner('🤔 Agent is thinking...'):
             try:
-                # Create a container for this specific question's reasoning
-                reasoning_container = st.container()
+                result = run_async_task(st.session_state.agent, prompt, reasoning_container)
                 
-                # Run the task using a wrapper function
-                result = run_async_task(st.session_state.agent, task, reasoning_container)
+                # Display assistant response
+                with st.chat_message("assistant"):
+                    st.markdown(result["output"])
                 
-                # Add reasoning and answer to history
-                reasoning_entry = {
-                    'type': 'reasoning',
-                    'content': 'Reasoning steps completed',
-                    'timestamp': datetime.now()
-                }
-                
-                answer_entry = {
-                    'type': 'answer',
-                    'content': result['output'],
-                    'duration': result['duration'],
-                    'tools_used': result['tools_used'],
-                    'timestamp': datetime.now()
-                }
-                
-                st.session_state.chat_history.extend([reasoning_entry, answer_entry])
-                
+                # Add assistant response to history with metadata
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": result["output"],
+                    "metadata": {
+                        "duration": result["duration"],
+                        "tools_used": result["tools_used"]
+                    }
+                })
             except Exception as e:
-                error_entry = {
-                    'type': 'error',
-                    'content': f"Error executing task: {e}",
-                    'timestamp': datetime.now()
-                }
-                st.session_state.chat_history.append(error_entry)
-        
-        # Force rerun to update the display and reset the form
-        st.rerun()
-    
-    # Display chat history
-    if st.session_state.chat_history:
-        st.markdown("## Chat History")
-        
-        # Group history items by question-reasoning-answer sets
-        i = 0
-        question_counter = 1
-        
-        while i < len(st.session_state.chat_history):
-            entry = st.session_state.chat_history[i]
-            
-            if entry['type'] == 'question':
-                # Display question
-                st.markdown(f"### Question {question_counter}: {entry['content']}")
-                
-                # Look for corresponding reasoning and answer
-                reasoning_content = None
-                answer_content = None
-                
-                # Check next items for reasoning and answer
-                if i + 1 < len(st.session_state.chat_history):
-                    next_entry = st.session_state.chat_history[i + 1]
-                    if next_entry['type'] == 'reasoning':
-                        reasoning_content = next_entry
-                        i += 1
-                
-                if i + 1 < len(st.session_state.chat_history):
-                    next_entry = st.session_state.chat_history[i + 1]
-                    if next_entry['type'] == 'answer':
-                        answer_content = next_entry
-                        i += 1
-                    elif next_entry['type'] == 'error':
-                        answer_content = next_entry
-                        i += 1
-                
-                # Display collapsible reasoning section
-                if reasoning_content:
-                    with st.expander(f"🔍 View Reasoning Process for Question {question_counter}", expanded=False):
-                        st.markdown("*Agent reasoning steps were executed above - expand to see this was processed*")
-                        st.info("The detailed reasoning steps were shown in real-time when the question was processed.")
-                
-                # Display answer
-                if answer_content:
-                    if answer_content['type'] == 'answer':
-                        st.markdown("**Answer:**")
-                        st.write(answer_content['content'])
-                        
-                        # Show metadata
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.caption(f"⏱️ Duration: {answer_content['duration']:.2f} seconds")
-                        with col2:
-                            tools_used = answer_content.get('tools_used', [])
-                            st.caption(f"🛠️ Tools: {', '.join(tools_used) if tools_used else 'None'}")
-                    
-                    elif answer_content['type'] == 'error':
-                        st.error(answer_content['content'])
-                
-                st.markdown("---")
-                question_counter += 1
-            
-            i += 1
-    
-    # Show helpful information at the bottom
-    if not st.session_state.chat_history:
-        st.info("👆 Ask your first question above to get started!")
-    
+                with st.chat_message("assistant"):
+                    st.error(f"Error: {str(e)}")
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"Error: {str(e)}"
+                })
+
+    # Buttons below chat input
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear Chat"):
+            st.session_state.messages = []
+            st.rerun()
+    with col2:
+        if st.button("🔄 Clear Memory"):
+            try:
+                st.session_state.agent.memory_manager.collection.delete(
+                    ids=st.session_state.agent.memory_manager.collection.get()['ids']
+                )
+                st.success("Memory cleared!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error clearing memory: {e}")
+
+    # Display memory status
+    try:
+        memory_count = len(st.session_state.agent.memory_manager.collection.get()['ids'])
+        st.caption(f"🧠 Memory: {memory_count} interactions stored")
+    except:
+        st.caption("🧠 Memory: Ready to store interactions")
+
     # Footer
+    if not st.session_state.messages:
+        st.info("👆 Type your first task above to get started!")
     st.markdown("---")
-    st.markdown("💡 **Tips:** You can ask multiple questions, and the agent will remember previous conversations!")
+    st.markdown("💡 **Tips:** Ask multiple questions, and the agent will remember previous conversations!")
 
 if __name__ == "__main__":
     main()
