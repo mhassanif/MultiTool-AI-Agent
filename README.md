@@ -1,6 +1,15 @@
-# Task-Oriented AI Chatbot
+# TaskMaster Ai
 
 This project implements a task-oriented AI chatbot using Streamlit for a clean web interface, LangChain for agent-based reasoning, and ChromaDB for conversation memory. The chatbot processes user tasks (e.g., calculations, information retrieval) by reasoning step-by-step, utilizing tools like web search and Python code execution, and maintains context from previous interactions for coherent responses.
+
+## Demo Video
+
+https://drive.google.com/file/d/1fG1dPWApX98v-mLof2g-d_jApBYsfwJX/view?usp=sharing
+
+## Screenshots
+![alt text](screenshots/1.png)
+![alt text](screenshots/2.png)
+![alt text](screenshots/3.png)
 
 ## Features
 - **Interactive Chat Interface**: Built with Streamlit, featuring `st.chat_message` for displaying user and assistant messages with avatars and `st.chat_input` for user input.
@@ -66,7 +75,7 @@ This project implements a task-oriented AI chatbot using Streamlit for a clean w
 5. **Run the Application**:
    - Start the Streamlit app:
      ```bash
-     streamlit run app.py
+     streamlit run main.py
      ```
    - Open your browser to `http://localhost:8501` to interact with the chatbot.
 
@@ -78,13 +87,3 @@ This project implements a task-oriented AI chatbot using Streamlit for a clean w
   - Python REPL for calculations or data analysis.
   - DuckDuckGo Search for information retrieval.
 - **Memory**: The agent recalls up to 3 recent and 5 relevant past interactions to maintain conversation continuity.
-
-## Known Issues
-- **Ollama Dependency**: Requires a running Ollama server with the specified model. Ensure the server is active before running the app.
-- **Memory Storage**: If ChromaDB fails to save interactions, a warning is displayed but does not affect the response.
-- **Tool Limitations**: The Python REPL requires `print()` statements for output, and DuckDuckGo Search may return limited results for niche queries.
-
-## Next Steps
-- Enhance the UI with custom avatars or themes for `st.chat_message`.
-- Add streaming response support for the LLM output (requires Ollama streaming compatibility).
-- Integrate additional tools (e.g., API triggers, file processing) with proper safeguards.
