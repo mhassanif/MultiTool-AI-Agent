@@ -135,7 +135,7 @@ class EnhancedTaskOrientedAgent:
         
         print(f"✅ Enhanced Agent initialized with {model_name} model")
         print(f"🛠️  Available tools: {[tool.name for tool in self.tools]}")
-        print(f"🧠 ChromaDB memory system ready")
+        print(f"🧠 ChromaDB auto-context system ready")
     
     def _setup_llm(self) -> OllamaLLM:
         """Setup the Ollama LLM."""
@@ -177,6 +177,7 @@ class EnhancedTaskOrientedAgent:
             python_tool = Tool(
                 name="python_execute",
                 description="Execute Python code for calculations, data analysis, or programming tasks. "
+                          "CRITICAL: Always import any libraries you are using. Example: import math; number = 25; square_root = math.sqrt(number); print(square_root)  not just number = 25; square_root = math.sqrt(number); print(square_root). "
                           "CRITICAL: Always use print() to see results. Example: print(2+2) not just 2+2. "
                           "For variables: x=5; print(x). For lists: data=[1,2,3]; print(data). "
                           "Always print the final result you want to return.",
@@ -186,32 +187,18 @@ class EnhancedTaskOrientedAgent:
         except Exception as e:
             print(f"⚠️  Warning: Could not setup Python REPL: {e}")
         
-        # Memory Search Tool
-        memory_search_tool = Tool(
-            name="memory_search",
-            description="Search through previous conversations for relevant context or information. "
-                      "Use when you need to recall something from past interactions.",
-            func=self.memory_manager.search_memory
-        )
-        tools.append(memory_search_tool)
-        
-        # Recent Context Tool
-        recent_context_tool = Tool(
-            name="recent_context",
-            description="Get recent conversation context to understand ongoing discussion.",
-            func=lambda x: self.memory_manager.get_recent_context()
-        )
-        tools.append(recent_context_tool)
+        # Note: Memory context is automatically injected into every prompt
+        # No need for separate memory tools since ChromaDB context is always available
         
         return tools
     
     def _setup_agent(self) -> AgentExecutor:
         """Setup the ReAct agent with improved prompt."""
         
-        # Enhanced prompt template for better planning and execution
+        # Enhanced prompt template with automatic memory context injection
         prompt_template = """You are an intelligent task-oriented AI assistant. You think step by step and use tools efficiently.
 
-CONVERSATION CONTEXT:
+CONVERSATION CONTEXT (from previous interactions):
 {memory_context}
 
 AVAILABLE TOOLS:
@@ -225,19 +212,19 @@ CRITICAL PYTHON USAGE RULES:
 - For lists/data: data=[1,2,3]; print(sum(data))
 
 WORKFLOW GUIDELINES:
-1. PLAN: Understand the task and plan your approach
+1. PLAN: Consider the conversation context and plan your approach
 2. EXECUTE: Use tools strategically - don't repeat the same action
-3. RESPOND: Give direct answers based on findings
+3. RESPOND: Give direct answers based on context and findings
 
 FORMAT:
 Question: the input question you must answer
-Thought: I need to [plan your approach - what tools will you use and why]
+Thought: I need to [plan your approach considering the context - what tools will you use and why]
 Action: the action to take, should be one of [{tool_names}]
 Action Input: [specific input for the tool]
 Observation: [result from the tool]
 ... (repeat Action/Action Input/Observation only if you need different information)
 Thought: I now have enough information to answer
-Final Answer: [clear, direct answer based on your findings]
+Final Answer: [clear, direct answer based on your findings and context]
 
 Question: {input}
 Thought: {agent_scratchpad}"""
