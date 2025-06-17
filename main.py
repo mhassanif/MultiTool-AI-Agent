@@ -15,7 +15,7 @@ from langchain.prompts import PromptTemplate
 from langchain.callbacks.base import AsyncCallbackHandler
 import nest_asyncio
 
-# Enable nested asyncio for Streamlit compatibility
+# nested asyncio enabled
 nest_asyncio.apply()
 
 def run_async_task(agent, task, container):
@@ -108,7 +108,7 @@ class ChromaMemoryManager:
         except Exception as e:
             return f"Error: {str(e)}"
 
-class EnhancedTaskOrientedAgent:
+class ReactAgent:
     def __init__(self, model_name: str = "phi3", temperature: float = 0.1):
         self.model_name = model_name
         self.temperature = temperature
@@ -173,6 +173,11 @@ CRITICAL PYTHON USAGE RULES:
 - For variables: x=5; print(x)
 - For calculations: result = 10*5; print(result)
 - For lists/data: data=[1,2,3]; print(sum(data))
+
+CRITICAL SEARCH USAGE RULES:
+- DO NOT Use search if the Task doesnt involve retrieving Information
+- If search is used , directly use it to answer the question, DO NOT perform repeated searches under any condition 
+
 
 WORKFLOW GUIDELINES:
 1. PLAN: Review conversation context and plan your approach
@@ -254,19 +259,42 @@ Thought: {agent_scratchpad}"""
         }
 
 def main():
-    st.title("🤖 Task-Oriented AI Chatbot")
-    st.markdown("Powered by ChromaDB and LangChain 🎈")
+    st.title("🤖 AI TaskMaster")
+    st.markdown("An advanced AI assistant create by Hassan Imran. It thinks, searches, calculates, and remembers — handling tasks intelligently. Created by Hassan Imran.")
 
-    # Initialize sidebar for reasoning
+    # Initialize sidebar for reasoning, buttons, and memory status
     with st.sidebar:
+        # st.title("Hassan Imran")
         st.header("🧠 Reasoning Process")
         reasoning_container = st.container()
+        st.markdown("---")
+        st.subheader("Controls")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️Clear Chat"):
+                st.session_state.messages = []
+                st.rerun()
+        with col2:
+            if st.button("🔄Clear Memory"):
+                try:
+                    st.session_state.agent.memory_manager.collection.delete(
+                        ids=st.session_state.agent.memory_manager.collection.get()['ids']
+                    )
+                    st.success("Memory cleared!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error clearing memory: {e}")
+        st.markdown("---")
+        try:
+            memory_count = len(st.session_state.agent.memory_manager.collection.get()['ids'])
+            st.caption(f"🧠 Memory: {memory_count} interactions stored")
+        except:
+            st.caption("🧠 Memory: Ready to store interactions")
 
     # Initialize session state
     if 'agent' not in st.session_state:
         try:
-            st.session_state.agent = EnhancedTaskOrientedAgent()
-            st.success("Agent initialized successfully!")
+            st.session_state.agent = ReactAgent()
         except Exception as e:
             st.error(f"Failed to initialize agent: {e}")
             return
@@ -322,36 +350,6 @@ def main():
                     "role": "assistant",
                     "content": f"Error: {str(e)}"
                 })
-
-    # Buttons below chat input
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🗑️ Clear Chat"):
-            st.session_state.messages = []
-            st.rerun()
-    with col2:
-        if st.button("🔄 Clear Memory"):
-            try:
-                st.session_state.agent.memory_manager.collection.delete(
-                    ids=st.session_state.agent.memory_manager.collection.get()['ids']
-                )
-                st.success("Memory cleared!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error clearing memory: {e}")
-
-    # Display memory status
-    try:
-        memory_count = len(st.session_state.agent.memory_manager.collection.get()['ids'])
-        st.caption(f"🧠 Memory: {memory_count} interactions stored")
-    except:
-        st.caption("🧠 Memory: Ready to store interactions")
-
-    # Footer
-    if not st.session_state.messages:
-        st.info("👆 Type your first task above to get started!")
-    st.markdown("---")
-    st.markdown("💡 **Tips:** Ask multiple questions, and the agent will remember previous conversations!")
 
 if __name__ == "__main__":
     main()
